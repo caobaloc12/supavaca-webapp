@@ -1,29 +1,36 @@
 import Layout from '@/components/Layout'
 import axios from 'axios'
-import { getSession, useSession } from 'next-auth/react'
 import Image from 'next/image'
 import { useRouter } from 'next/router'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { prisma } from '@/lib/prisma'
+import { HeartIcon } from '@heroicons/react/solid'
+import { HeartIcon as HearIconOutline } from '@heroicons/react/outline'
 
 export default function ListedHome(home = null) {
   const router = useRouter()
-  const { data: session } = useSession()
-  const [isOwner, setIsOwner] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [currentUser, setCurrentUser] = useState(null)
+
+  const isOwner = useMemo(
+    () => home?.ownerId === currentUser?.id,
+    [home, currentUser]
+  )
 
   useEffect(() => {
-    const getOwner = async () => {
+    const getCurrentUser = async () => {
       try {
-        const { data } = axios.get(`/api/homes/${home.id}/owner`)
-        setIsOwner(data?.id === session?.user?.id)
-      } catch (error) {}
+        const { data: currentUser } = await axios.get(`/api/current-user`)
+        setCurrentUser(currentUser)
+      } catch (e) {
+        setCurrentUser(null)
+      }
     }
-    if (home?.id && session?.user) {
-      getOwner()
+    if (home) {
+      getCurrentUser()
     }
-  }, [session, home])
+  }, [home])
 
   const deleteHome = async () => {
     let toastId
@@ -39,6 +46,34 @@ export default function ListedHome(home = null) {
       console.log(e)
       toast.error('Unable to delete home', { id: toastId })
       setDeleting(false)
+    }
+  }
+
+  const toggleFavorite = async () => {
+    if (!home) return
+
+    let toastId = null
+    const isRemoved = home.favoredById === currentUser?.id
+    try {
+      toastId = toast.loading('Please wait...')
+      // Add/remove the home from the user's favorites
+      await axios({
+        url: `/api/homes/${home.id}/favorite`,
+        method: isRemoved ? 'delete' : 'put',
+      })
+      toast.success(
+        `${isRemoved ? 'Removed from' : 'Added to'} favorites successfully!`,
+        { id: toastId }
+      )
+      router.replace(router.asPath)
+    } catch (e) {
+      console.log(e)
+      toast.error(
+        `Unable to ${
+          isRemoved ? 'remove home from ' : 'add home to '
+        } your favorites.`,
+        { id: toastId }
+      )
     }
   }
 
@@ -65,27 +100,44 @@ export default function ListedHome(home = null) {
             </ol>
           </div>
 
-          {isOwner ? (
-            <div className='flex items-center space-x-2'>
-              <button
-                type='button'
-                disabled={deleting}
-                onClick={() => router.push(`/homes/${home.id}/edit`)}
-                className='px-4 py-1 border border-gray-800 text-gray-800 hover:bg-gray-800 hover:text-white transition rounded-md disabled:text-gray-800 disabled:bg-transparent disabled:opacity-50 disabled:cursor-not-allowed'
-              >
-                Edit
-              </button>
+          <div className='flex space-x-6 items-center'>
+            <button
+              type='button'
+              onClick={(e) => {
+                e.preventDefault()
+                toggleFavorite()
+              }}
+            >
+              {home?.favoredById === currentUser?.id ? (
+                <HeartIcon
+                  className={`w-7 h-7 drop-shadow transition text-red-500`}
+                />
+              ) : (
+                <HearIconOutline className='w-7 h-7 text-gray-500 drop-shadow transition hover:text-red-400' />
+              )}
+            </button>
+            {isOwner ? (
+              <div className='flex items-center space-x-2'>
+                <button
+                  type='button'
+                  disabled={deleting}
+                  onClick={() => router.push(`/homes/${home.id}/edit`)}
+                  className='px-4 py-1 border border-gray-800 text-gray-800 hover:bg-gray-800 hover:text-white transition rounded-md disabled:text-gray-800 disabled:bg-transparent disabled:opacity-50 disabled:cursor-not-allowed'
+                >
+                  Edit
+                </button>
 
-              <button
-                type='button'
-                disabled={deleting}
-                onClick={deleteHome}
-                className='rounded-md border border-rose-500 text-rose-500 hover:bg-rose-500 hover:text-white focus:outline-none transition disabled:bg-rose-500 disabled:text-white disabled:opacity-50 disabled:cursor-not-allowed px-4 py-1'
-              >
-                Delete
-              </button>
-            </div>
-          ) : null}
+                <button
+                  type='button'
+                  disabled={deleting}
+                  onClick={deleteHome}
+                  className='rounded-md border border-rose-500 text-rose-500 hover:bg-rose-500 hover:text-white focus:outline-none transition disabled:bg-rose-500 disabled:text-white disabled:opacity-50 disabled:cursor-not-allowed px-4 py-1'
+                >
+                  Delete
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
         <div className='relative w-full h-full min-h-[400px]'>
           {home?.image && (
@@ -104,31 +156,10 @@ export default function ListedHome(home = null) {
 }
 
 export async function getServerSideProps(context) {
-  const session = await getSession(context)
-  const redirect = {
-    redirect: {
-      destination: '/',
-      permanent: false,
-    },
-  }
-  if (!session) {
-    return redirect
-  }
-
-  // Retrieve the authenticated user
-  const user = await prisma.user.findUnique({
-    where: {
-      email: session.user.email,
-    },
-    select: { listedHomes: true },
-  })
-
-  // Check if authenticated user owns this home
   const id = context.params.id
-  const home = user?.listedHomes?.find((home) => home.id === id)
-  if (!home) {
-    return redirect
-  }
+  const home = await prisma.home.findUnique({
+    where: { id },
+  })
   return {
     props: JSON.parse(JSON.stringify(home)),
   }

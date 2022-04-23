@@ -1,25 +1,9 @@
 import Layout from '@/components/Layout'
-import axios from 'axios'
 import { getSession } from 'next-auth/react'
-import toast from 'react-hot-toast'
 import { prisma } from '@/lib/prisma'
 import Grid from '@/components/Grid'
 
 export default function Favorites({ homes = [] }) {
-  const toggleFavorite = async (id) => {
-    const home = homes.find((home) => home.id === id)
-    if (!home) return
-    let toastId = null
-    try {
-      // Add/remove the home from the user's favorites
-      await axios.put(`/api/homes/${id}/favorite`)
-      toastId = toast.success('Removed from favorites successfully!')
-    } catch (e) {
-      console.log(e)
-      toast.error('Unable to remove home from your favorites', { id: toastId })
-    }
-  }
-
   return (
     <Layout>
       <h1 className='text-xl font-medium text-gray-800'>Your listings</h1>
@@ -27,7 +11,7 @@ export default function Favorites({ homes = [] }) {
         Manage your homes and update your listings
       </p>
       <div className='mt-8'>
-        <Grid homes={homes} toggleFavorite={toggleFavorite} />
+        <Grid homes={homes} />
       </div>
     </Layout>
   )

@@ -4,16 +4,13 @@ import axios from 'axios'
 import toast from 'react-hot-toast'
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/router'
 
-const Grid = (props) => {
+const Grid = ({ homes }) => {
   const { data: session } = useSession()
-  const [homes, setHomes] = useState([])
+  const router = useRouter()
   const [currentUser, setCurrentUser] = useState(null)
-  const isEmpty = props.homes.length === 0
-
-  useEffect(() => {
-    setHomes(props.homes)
-  }, [props.homes])
+  const isEmpty = homes.length === 0
 
   useEffect(() => {
     const getCurrentUser = async () => {
@@ -28,7 +25,6 @@ const Grid = (props) => {
       getCurrentUser()
     }
   }, [session?.user])
-  console.log(currentUser)
 
   const toggleFavorite = async (id) => {
     const home = homes.find((home) => home.id === id)
@@ -39,7 +35,7 @@ const Grid = (props) => {
     try {
       toastId = toast.loading('Please wait...')
       // Add/remove the home from the user's favorites
-      const { data } = await axios({
+      await axios({
         url: `/api/homes/${id}/favorite`,
         method: isRemoved ? 'delete' : 'put',
       })
@@ -47,24 +43,13 @@ const Grid = (props) => {
         `${isRemoved ? 'Removed from' : 'Added to'} favorites successfully!`,
         { id: toastId }
       )
-      setHomes((prevHomes) => {
-        const newHomes = prevHomes.map((h) => {
-          if (h.id === id) {
-            return {
-              ...h,
-              favoredById: data.favoredById,
-            }
-          }
-          return h
-        })
-        return newHomes
-      })
+      router.replace(router.asPath)
     } catch (e) {
       console.log(e)
       toast.error(
         `Unable to ${
           isRemoved ? 'remove home from ' : 'add home to '
-        } your favorites`,
+        } your favorites.`,
         { id: toastId }
       )
     }
